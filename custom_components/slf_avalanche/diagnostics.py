@@ -81,7 +81,11 @@ def _coordinators(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
     runtime = getattr(entry, "runtime_data", None)
     if runtime is None:
         return {}
-    return {"bulletin": getattr(runtime, "bulletin", None), "imis": getattr(runtime, "imis", None)}
+    return {
+        "bulletin": getattr(runtime, "bulletin", None),
+        "imis": getattr(runtime, "imis", None),
+        "study_plot": getattr(runtime, "study_plot", None),
+    }
 
 
 async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:

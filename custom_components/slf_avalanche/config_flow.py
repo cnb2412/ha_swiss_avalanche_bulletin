@@ -1,10 +1,10 @@
 """Config flow for the Swiss Avalanche Bulletin (SLF) integration.
 
-Setup starts with a menu: the avalanche bulletin for a location, or
-favourite IMIS measuring stations. Reconfigure (the entry's menu under
-Settings → Devices & services) changes an entry in place with the form of
-its own mode: another location or label for a bulletin, other stations for
-an IMIS entry. The entry keeps its id, so its entities keep their ids and
+Setup starts with a menu: the avalanche bulletin for a location, favourite
+IMIS measuring stations, or favourite study plots (manual measuring
+fields). Reconfigure (the entry's menu under Settings → Devices & services)
+changes an entry in place with the form of its own mode: another location
+or label for a bulletin, other stations for an IMIS or study plot entry. The entry keeps its id, so its entities keep their ids and
 history; the devices of stations that are no longer selected are removed on
 the reload, as they are after a change in the options.
 """
@@ -24,8 +24,8 @@ from homeassistant.helpers.selector import (
 )
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
+from . import entry_stations
 from .const import (
-    CONF_IMIS_STATIONS,
     CONF_LATITUDE,
     CONF_LONGITUDE,
     CONF_MODE,
@@ -33,10 +33,13 @@ from .const import (
     DOMAIN,
     MODE_BULLETIN,
     MODE_IMIS,
+    MODE_STUDY_PLOT,
+    STATIONS_KEY,
 )
 from .coordinator import API_ERRORS, async_resolve_sector
 from .imis import async_fetch_stations, stations_by_distance
 from .localization import t
+from .study_plot import async_fetch_study_plot_stations
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,7 +47,8 @@ _LOGGER = logging.getLogger(__name__)
 # knows no warning region for the coordinates.
 _CANNOT_CONNECT = (UpdateFailed, *API_ERRORS)
 
-# Station type markers shown in the picker.
+# Station type markers shown in the picker. Study plots have no type; they
+# show their canton instead.
 _TYPE_LABEL = {
     "SNOW_FLAT": "❄",
     "SNOW_SLOPE": "❄⛰",
@@ -61,8 +65,9 @@ def _station_options(stations: list[dict]) -> list[SelectOptionDict]:
             label=(
                 f"{s.get('label') or s['code']} "
                 f"({s['code']}, {round(s.get('elevation') or 0)} m, "
-                f"{s['distance_km']} km) {_TYPE_LABEL.get(s.get('type'), '')}"
-            ),
+                f"{s['distance_km']} km) "
+                f"{_TYPE_LABEL.get(s.get('type')) or s.get('canton_code') or ''}"
+            ).rstrip(),
         )
         for s in stations
     ]
@@ -91,33 +96,26 @@ def _selected_stations(stations: list[dict], codes: list[str]) -> list[dict]:
 
 
 def _stations_configured_elsewhere(
-    hass: HomeAssistant, exclude_entry_id: str | None = None
+    hass: HomeAssistant, mode: str, exclude_entry_id: str | None = None
 ) -> set[str]:
-    """Codes of the stations that are already favourites of another IMIS entry."""
+    """Codes of the stations that are already favourites of another entry of the mode."""
     codes: set[str] = set()
     for entry in hass.config_entries.async_entries(DOMAIN):
         if entry.entry_id == exclude_entry_id:
             continue
-        if entry.data.get(CONF_MODE, MODE_BULLETIN) != MODE_IMIS:
+        if entry.data.get(CONF_MODE, MODE_BULLETIN) != mode:
             continue
-        stations = entry.options.get(
-            CONF_IMIS_STATIONS, entry.data.get(CONF_IMIS_STATIONS) or []
-        )
-        codes.update(s["code"] for s in stations)
+        codes.update(s["code"] for s in entry_stations(entry))
     return codes
 
 
-def _imis_title(stations: list[dict]) -> str:
+def _station_title(hass: HomeAssistant, mode: str, stations: list[dict]) -> str:
     labels = [s["label"] for s in stations]
     shown = ", ".join(labels[:2])
     if len(labels) > 2:
         shown += f" +{len(labels) - 2}"
-    return f"IMIS {shown}" if shown else "IMIS"
-
-
-def _current_stations(entry: ConfigEntry) -> list[dict]:
-    """The entry's favourite stations: the options win over the data."""
-    return entry.options.get(CONF_IMIS_STATIONS, entry.data.get(CONF_IMIS_STATIONS) or [])
+    prefix = "IMIS" if mode == MODE_IMIS else t("study_plot_entry_title", hass)
+    return f"{prefix} {shown}" if shown else prefix
 
 
 def _bulletin_schema(defaults: dict[str, Any]) -> vol.Schema:
@@ -135,10 +133,10 @@ def _bulletin_schema(defaults: dict[str, Any]) -> vol.Schema:
     )
 
 
-def _imis_schema(stations: list[dict], current_codes: list[str]) -> vol.Schema:
+def _station_schema(mode: str, stations: list[dict], current_codes: list[str]) -> vol.Schema:
     return vol.Schema(
         {
-            vol.Required(CONF_IMIS_STATIONS, default=current_codes): SelectSelector(
+            vol.Required(STATIONS_KEY[mode], default=current_codes): SelectSelector(
                 SelectSelectorConfig(
                     options=_station_options(stations),
                     multiple=True,
@@ -149,30 +147,50 @@ def _imis_schema(stations: list[dict], current_codes: list[str]) -> vol.Schema:
     )
 
 
+async def _async_fetch_station_list(hass: HomeAssistant, mode: str) -> list[dict]:
+    """Every station of the mode, sorted by distance from home."""
+    if mode == MODE_IMIS:
+        stations = await async_fetch_stations(hass)
+    else:
+        stations = await async_fetch_study_plot_stations(hass)
+    return stations_by_distance(stations, hass.config.latitude, hass.config.longitude)
+
+
+def _selection_errors(
+    hass: HomeAssistant, mode: str, stations: list[dict], entry: ConfigEntry | None
+) -> dict[str, str]:
+    """Errors of a station selection: none chosen, or one taken by another entry."""
+    taken = _stations_configured_elsewhere(hass, mode, entry.entry_id if entry else None)
+    if not stations:
+        return {STATIONS_KEY[mode]: "no_station"}
+    if any(s["code"] in taken for s in stations):
+        return {STATIONS_KEY[mode]: "station_already_configured"}
+    return {}
+
+
 class SlfAvalancheConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Mode menu first: avalanche bulletin per location, or IMIS station favourites."""
+    """Mode menu first: avalanche bulletin per location, IMIS station or
+    study plot favourites."""
 
     VERSION = 1
 
     def __init__(self) -> None:
-        self._stations: list[dict] = []
+        self._stations: dict[str, list[dict]] = {}
 
-    async def _async_station_list(self) -> list[dict] | None:
-        """Every IMIS station sorted by distance from home, fetched once per
-        flow; None when the list could not be read."""
-        if not self._stations:
+    async def _async_station_list(self, mode: str) -> list[dict] | None:
+        """Every station of the mode sorted by distance from home, fetched
+        once per flow; None when the list could not be read."""
+        if not self._stations.get(mode):
             try:
-                stations = await async_fetch_stations(self.hass)
+                self._stations[mode] = await _async_fetch_station_list(self.hass, mode)
             except API_ERRORS:
                 return None
-            self._stations = stations_by_distance(
-                stations, self.hass.config.latitude, self.hass.config.longitude
-            )
-        return self._stations
+        return self._stations[mode]
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        return self.async_show_menu(step_id="user", menu_options=["bulletin", "imis"])
-
+        return self.async_show_menu(
+            step_id="user", menu_options=["bulletin", "imis", "study_plot"]
+        )
     # ---------------------------------------------------------- bulletin
 
     async def async_step_bulletin(
@@ -239,57 +257,72 @@ class SlfAvalancheConfigFlow(ConfigFlow, domain=DOMAIN):
             schema = self.add_suggested_values_to_schema(schema, user_input)
         return self.async_show_form(step_id=step_id, data_schema=schema, errors=errors)
 
-    # -------------------------------------------------------------- imis
+    # ------------------------------------------------- imis / study plots
 
     async def async_step_imis(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Set up favourite IMIS measuring stations (independent of a bulletin)."""
-        return await self._async_imis_form("imis", user_input, None)
+        return await self._async_station_form("imis", MODE_IMIS, user_input, None)
 
     async def async_step_reconfigure_imis(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        return await self._async_imis_form(
-            "reconfigure_imis", user_input, self._get_reconfigure_entry()
+        return await self._async_station_form(
+            "reconfigure_imis", MODE_IMIS, user_input, self._get_reconfigure_entry()
         )
 
-    async def _async_imis_form(
-        self, step_id: str, user_input: dict[str, Any] | None, entry: ConfigEntry | None
+    async def async_step_study_plot(
+        self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Set up favourite study plots (manual measuring fields)."""
+        return await self._async_station_form("study_plot", MODE_STUDY_PLOT, user_input, None)
+
+    async def async_step_reconfigure_study_plot(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        return await self._async_station_form(
+            "reconfigure_study_plot", MODE_STUDY_PLOT, user_input, self._get_reconfigure_entry()
+        )
+
+    async def _async_station_form(
+        self,
+        step_id: str,
+        mode: str,
+        user_input: dict[str, Any] | None,
+        entry: ConfigEntry | None,
+    ) -> ConfigFlowResult:
+        key = STATIONS_KEY[mode]
         errors: dict[str, str] = {}
 
         if user_input is not None:
             stations = _selected_stations(
-                self._stations, user_input.get(CONF_IMIS_STATIONS) or []
+                self._stations.get(mode) or [], user_input.get(key) or []
             )
-            taken = _stations_configured_elsewhere(
-                self.hass, entry.entry_id if entry else None
-            )
-            if not stations:
-                errors[CONF_IMIS_STATIONS] = "no_station"
-            elif any(s["code"] in taken for s in stations):
-                errors[CONF_IMIS_STATIONS] = "station_already_configured"
-            else:
-                data = {CONF_MODE: MODE_IMIS, CONF_IMIS_STATIONS: stations}
+            errors = _selection_errors(self.hass, mode, stations, entry)
+            if not errors:
+                title = _station_title(self.hass, mode, stations)
+                data = {CONF_MODE: mode, key: stations}
                 if entry is None:
-                    return self.async_create_entry(title=_imis_title(stations), data=data)
+                    return self.async_create_entry(title=title, data=data)
                 # The new selection goes to the data; an older selection in
                 # the options would win over it, so it is dropped.
                 # Update only: the entry's update listener reloads it.
                 self.hass.config_entries.async_update_entry(
                     entry,
-                    title=_imis_title(stations),
+                    title=title,
                     data=data,
-                    options={k: v for k, v in entry.options.items() if k != CONF_IMIS_STATIONS},
+                    options={k: v for k, v in entry.options.items() if k != key},
                 )
                 return self.async_abort(reason="reconfigure_successful")
 
-        stations = await self._async_station_list()
+        stations = await self._async_station_list(mode)
         if stations is None:
-            return self.async_abort(reason="imis_unavailable")
+            return self.async_abort(reason=f"{mode}_unavailable")
 
-        current_codes = [s["code"] for s in _current_stations(entry)] if entry else []
+        current_codes = [s["code"] for s in entry_stations(entry)] if entry else []
         return self.async_show_form(
-            step_id=step_id, data_schema=_imis_schema(stations, current_codes), errors=errors
+            step_id=step_id,
+            data_schema=_station_schema(mode, stations, current_codes),
+            errors=errors,
         )
 
     # ------------------------------------------------------- reconfigure
@@ -298,9 +331,11 @@ class SlfAvalancheConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Change an entry with the form of its own mode."""
-        entry = self._get_reconfigure_entry()
-        if entry.data.get(CONF_MODE, MODE_BULLETIN) == MODE_IMIS:
+        mode = self._get_reconfigure_entry().data.get(CONF_MODE, MODE_BULLETIN)
+        if mode == MODE_IMIS:
             return await self.async_step_reconfigure_imis(user_input)
+        if mode == MODE_STUDY_PLOT:
+            return await self.async_step_reconfigure_study_plot(user_input)
         return await self.async_step_reconfigure_bulletin(user_input)
 
     @staticmethod
@@ -310,46 +345,48 @@ class SlfAvalancheConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class SlfAvalancheOptionsFlow(OptionsFlow):
-    """Manage the favourite IMIS stations of an IMIS entry."""
+    """Manage the favourite stations of an IMIS or study plot entry."""
 
     def __init__(self) -> None:
         self._stations: list[dict] = []
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        entry = self.config_entry
-        if entry.data.get(CONF_MODE, MODE_BULLETIN) != MODE_IMIS:
+        mode = self.config_entry.data.get(CONF_MODE, MODE_BULLETIN)
+        if mode == MODE_STUDY_PLOT:
+            return await self.async_step_study_plot(user_input)
+        if mode != MODE_IMIS:
             return self.async_abort(reason="no_options")
+        return await self._async_station_form("init", mode, user_input)
 
+    async def async_step_study_plot(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        return await self._async_station_form("study_plot", MODE_STUDY_PLOT, user_input)
+
+    async def _async_station_form(
+        self, step_id: str, mode: str, user_input: dict[str, Any] | None
+    ) -> ConfigFlowResult:
+        entry = self.config_entry
+        key = STATIONS_KEY[mode]
         errors: dict[str, str] = {}
         if user_input is not None:
-            stations = _selected_stations(
-                self._stations, user_input.get(CONF_IMIS_STATIONS) or []
-            )
-            taken = _stations_configured_elsewhere(self.hass, entry.entry_id)
-            if not stations:
-                errors[CONF_IMIS_STATIONS] = "no_station"
-            elif any(s["code"] in taken for s in stations):
-                errors[CONF_IMIS_STATIONS] = "station_already_configured"
-            else:
-                return self.async_create_entry(
-                    title="", data={CONF_IMIS_STATIONS: stations}
-                )
+            stations = _selected_stations(self._stations, user_input.get(key) or [])
+            errors = _selection_errors(self.hass, mode, stations, entry)
+            if not errors:
+                return self.async_create_entry(title="", data={key: stations})
 
         if not self._stations:
             try:
-                stations = await async_fetch_stations(self.hass)
+                self._stations = await _async_fetch_station_list(self.hass, mode)
             except API_ERRORS:
-                return self.async_abort(reason="imis_unavailable")
+                return self.async_abort(reason=f"{mode}_unavailable")
             except Exception:  # noqa: BLE001 - shown as "unknown", logged for the bug report
-                _LOGGER.exception("Unexpected error while fetching the IMIS station list")
+                _LOGGER.exception("Unexpected error while fetching the station list")
                 return self.async_abort(reason="unknown")
-            self._stations = stations_by_distance(
-                stations, self.hass.config.latitude, self.hass.config.longitude
-            )
 
-        current_codes = [s["code"] for s in _current_stations(entry)]
+        current_codes = [s["code"] for s in entry_stations(entry)]
         return self.async_show_form(
-            step_id="init",
-            data_schema=_imis_schema(self._stations, current_codes),
+            step_id=step_id,
+            data_schema=_station_schema(mode, self._stations, current_codes),
             errors=errors,
         )

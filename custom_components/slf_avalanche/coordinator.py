@@ -17,9 +17,11 @@ from .const import (
     DOMAIN,
     IMIS_UPDATE_INTERVAL_MINUTES,
     SECTOR_URL,
+    STUDY_PLOT_UPDATE_INTERVAL_MINUTES,
     UPDATE_INTERVAL_MINUTES,
 )
 from .imis import async_fetch_daily_snow, async_fetch_station_measurements
+from .study_plot import async_fetch_study_plot_measurements
 from .issues import IssueReporter
 
 _LOGGER = logging.getLogger(__name__)
@@ -153,24 +155,30 @@ class SlfAvalancheCoordinator(DataUpdateCoordinator[dict]):
         return result
 
 
-class ImisCoordinator(DataUpdateCoordinator[dict]):
-    """Fetches the latest IMIS measurements for the selected stations.
+class _StationCoordinator(DataUpdateCoordinator[dict]):
+    """Fetches the current values of the selected stations, all at once.
 
     Data: dict keyed by station code with {"values", "dates", "fields",
-    "measure_date", "new_snow_1d", "daily_snow_height", "daily_measure_date"}.
-    A station that could not be fetched is absent from the dict, which is
-    what its sensors use to report themselves unavailable.
+    "measure_date"} plus what a subclass adds. A station that could not be
+    fetched is absent from the dict, which is what its sensors use to report
+    themselves unavailable.
     """
 
+    # Set by the subclasses: name in log lines, repair issue raised for a
+    # station that keeps failing and after how many refreshes in a row.
+    _kind: str
+    _station_issue: str
+    _station_issue_after: int
+
     def __init__(
-        self, hass: HomeAssistant, stations: list[dict], name: str, entry_id: str | None = None
+        self,
+        hass: HomeAssistant,
+        stations: list[dict],
+        name: str,
+        entry_id: str | None,
+        update_interval: timedelta,
     ) -> None:
-        super().__init__(
-            hass,
-            _LOGGER,
-            name=f"{DOMAIN}_imis {name}",
-            update_interval=timedelta(minutes=IMIS_UPDATE_INTERVAL_MINUTES),
-        )
+        super().__init__(hass, _LOGGER, name=name, update_interval=update_interval)
         self.issues = IssueReporter(hass, entry_id) if entry_id else None
         # Station metadata dicts as stored in the config entry
         # (code, label, elevation, lat, lon, type, distance_km).
@@ -179,30 +187,85 @@ class ImisCoordinator(DataUpdateCoordinator[dict]):
         # once when they are back, not on every refresh in between.
         self._failed: set[str] = set()
 
+    async def _async_fetch_measurements(self, code: str) -> dict:
+        raise NotImplementedError
+
     async def _fetch_station(self, code: str) -> dict | None:
         """Measurements of one station, or None when it cannot be fetched."""
         try:
-            data = await async_fetch_station_measurements(self.hass, code)
+            data = await self._async_fetch_measurements(code)
         except API_ERRORS as err:
             if code in self._failed:
-                _LOGGER.debug("IMIS station %s still unreachable: %s", code, err)
+                _LOGGER.debug("%s %s still unreachable: %s", self._kind, code, err)
             else:
-                _LOGGER.warning("IMIS station %s unreachable: %s", code, err)
+                _LOGGER.warning("%s %s unreachable: %s", self._kind, code, err)
                 self._failed.add(code)
             if self.issues:
-                # Six hours of failures (twelve half-hourly refreshes): the
-                # station is most likely out of service, say so under Repairs.
                 label = next((s.get("label") for s in self.stations if s["code"] == code), None) or code
                 self.issues.failure(
-                    "imis_station_unavailable", {"station": label, "code": code}, after=12, suffix=code
+                    self._station_issue,
+                    {"station": label, "code": code},
+                    after=self._station_issue_after,
+                    suffix=code,
                 )
             return None
         if code in self._failed:
             self._failed.discard(code)
-            _LOGGER.info("IMIS station %s reachable again", code)
+            _LOGGER.info("%s %s reachable again", self._kind, code)
         if self.issues:
-            self.issues.clear("imis_station_unavailable", suffix=code)
+            self.issues.clear(self._station_issue, suffix=code)
         return data
+
+    async def _async_fetch_all(self) -> dict[str, dict]:
+        """Every selected station that answered, by code."""
+        # All stations at once rather than one after the other, so the first
+        # refresh at entry setup does not wait for N sequential requests.
+        fetched = await asyncio.gather(
+            *(self._fetch_station(station["code"]) for station in self.stations)
+        )
+        result = {
+            station["code"]: data
+            for station, data in zip(self.stations, fetched)
+            if data is not None
+        }
+        if self.stations and not result:
+            if self.issues:
+                self.issues.failure("unreachable", {"host": "measurement-api.slf.ch"})
+            raise UpdateFailed(f"No {self._kind} reachable")
+        if self.issues:
+            self.issues.clear("unreachable")
+        return result
+
+    async def _async_update_data(self) -> dict:
+        return await self._async_fetch_all()
+
+
+class ImisCoordinator(_StationCoordinator):
+    """Fetches the latest IMIS measurements for the selected stations.
+
+    Adds "new_snow_1d", "daily_snow_height" and "daily_measure_date" from
+    the daily-snow endpoint to each station's data.
+    """
+
+    _kind = "IMIS station"
+    # Six hours of failures (twelve half-hourly refreshes): the station is
+    # most likely out of service, say so under Repairs.
+    _station_issue = "imis_station_unavailable"
+    _station_issue_after = 12
+
+    def __init__(
+        self, hass: HomeAssistant, stations: list[dict], name: str, entry_id: str | None = None
+    ) -> None:
+        super().__init__(
+            hass,
+            stations,
+            f"{DOMAIN}_imis {name}",
+            entry_id,
+            timedelta(minutes=IMIS_UPDATE_INTERVAL_MINUTES),
+        )
+
+    async def _async_fetch_measurements(self, code: str) -> dict:
+        return await async_fetch_station_measurements(self.hass, code)
 
     async def _async_update_data(self) -> dict:
         try:
@@ -211,27 +274,34 @@ class ImisCoordinator(DataUpdateCoordinator[dict]):
             _LOGGER.debug("IMIS daily-snow unavailable: %s", err)
             daily = {}
 
-        # All stations at once rather than one after the other, so the first
-        # refresh at entry setup does not wait for N sequential requests.
-        fetched = await asyncio.gather(
-            *(self._fetch_station(station["code"]) for station in self.stations)
-        )
-
-        result: dict[str, dict] = {}
-        for station, data in zip(self.stations, fetched):
-            if data is None:
-                continue
-            code = station["code"]
+        result = await self._async_fetch_all()
+        for code, data in result.items():
             daily_record = daily.get(code) or {}
             data["new_snow_1d"] = daily_record.get("HN_1D")
             data["daily_snow_height"] = daily_record.get("HS")
             data["daily_measure_date"] = daily_record.get("measure_date")
-            result[code] = data
-
-        if self.stations and not result:
-            if self.issues:
-                self.issues.failure("unreachable", {"host": "measurement-api.slf.ch"})
-            raise UpdateFailed("No IMIS station reachable")
-        if self.issues:
-            self.issues.clear("unreachable")
         return result
+
+
+class StudyPlotCoordinator(_StationCoordinator):
+    """Fetches the latest readings of the selected study plots."""
+
+    _kind = "Study plot"
+    # Twelve hours of failures (twelve hourly refreshes). A day without a
+    # reading is not a failure: the plot answers and its values read unknown.
+    _station_issue = "study_plot_unavailable"
+    _station_issue_after = 12
+
+    def __init__(
+        self, hass: HomeAssistant, stations: list[dict], name: str, entry_id: str | None = None
+    ) -> None:
+        super().__init__(
+            hass,
+            stations,
+            f"{DOMAIN}_study_plot {name}",
+            entry_id,
+            timedelta(minutes=STUDY_PLOT_UPDATE_INTERVAL_MINUTES),
+        )
+
+    async def _async_fetch_measurements(self, code: str) -> dict:
+        return await async_fetch_study_plot_measurements(self.hass, code)

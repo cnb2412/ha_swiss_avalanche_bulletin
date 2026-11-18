@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.0 — 2026-11-18
+
+- **New: study plots.** Besides the automatic IMIS stations, the SLF runs about 100 manual measuring fields ("Vergleichsstationen"), where an observer reads snow depth, new snow and its water equivalent every morning. Choose **Study plots** when adding the integration to pick any of them as favourites from a list sorted by distance (with the canton). Each plot becomes a device with sensors for snow depth, new snow 24 h and, where it is measured, the water equivalent of the new snow, from the official measurement API, checked every hour. A reading counts as current for 36 hours, so the morning's value stays until the next one is entered; a day without a reading reads unknown. Reconfigure and the Configure dialog change the favourites, a plot that cannot be fetched for twelve hours raises a repair notice, and diagnostics include the plots. In all four languages.
+- **The station card and the dashboard show study plots.** The *SLF IMIS Station* card offers study plots in its station picker and shows snow depth, new snow and its water equivalent; the dashboard strategy adds a section per study plot entry. Raise the `?v=` of the card resource to `1.7.0` (see the README) so the browser loads the new file.
+- No change to the bulletin and IMIS entities: their ids, names and values stay as they were.
+
 ## 1.6.2 — 2026-11-10
 
 - **New icon and logo.** The integration has a new icon and a new logo, now with a variant for the dark theme. They appear under Settings → Devices & services and in the Marketplace. The README gained a header image.

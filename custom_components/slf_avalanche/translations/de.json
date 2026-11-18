@@ -3,10 +3,11 @@
     "step": {
       "user": {
         "title": "SLF Lawinenbulletin",
-        "description": "Wähle, was eingerichtet werden soll: das Lawinenbulletin für einen Standort oder IMIS-Messstationen-Favoriten (Schneehöhe, Temperaturen, Wind) — unabhängig voneinander. Integration erneut hinzufügen für weitere Standorte oder Stationen.",
+        "description": "Wähle, was eingerichtet werden soll: das Lawinenbulletin für einen Standort, IMIS-Messstationen-Favoriten (Schneehöhe, Temperaturen, Wind) oder Messfeld-Favoriten (Schneehöhe und Neuschnee, von Beobachtern abgelesen) — unabhängig voneinander. Integration erneut hinzufügen für weitere Standorte oder Stationen.",
         "menu_options": {
           "bulletin": "Lawinenbulletin für einen Standort",
-          "imis": "IMIS-Messstationen (Favoriten)"
+          "imis": "IMIS-Messstationen (Favoriten)",
+          "study_plot": "Messfelder (manuelle Vergleichsstationen, Favoriten)"
         }
       },
       "bulletin": {
@@ -25,6 +26,13 @@
           "imis_stations": "Stationen"
         }
       },
+      "study_plot": {
+        "title": "Messfelder",
+        "description": "Wähle deine Messfeld-Favoriten des SLF: manuelle Vergleichsstationen, an denen ein Beobachter einmal täglich am Morgen Schneehöhe, Neuschnee und dessen Wasserwert abliest. Es sind beliebige Messfelder wählbar — die Liste ist nach Distanz zum Heimatstandort sortiert und zeigt den Kanton, zum Suchen einfach tippen. Favoriten lassen sich später über die Integrations-Optionen ändern.",
+        "data": {
+          "study_plots": "Messfelder"
+        }
+      },
       "reconfigure_bulletin": {
         "title": "Standort oder Bezeichnung ändern",
         "description": "Ändert Standort oder Bezeichnung dieses Bulletin-Eintrags. Die Warnregion wird für die neuen Koordinaten neu bestimmt. Entitäten behalten ihre IDs und ihren Verlauf; der Gerätename folgt der Bezeichnung.",
@@ -40,11 +48,19 @@
         "data": {
           "imis_stations": "Stationen"
         }
+      },
+      "reconfigure_study_plot": {
+        "title": "Messfelder ändern",
+        "description": "Ändert die Messfeld-Favoriten dieses Eintrags. Die Liste ist nach Distanz sortiert und zeigt den Kanton, zum Suchen einfach tippen. Messfelder, die ausgewählt bleiben, behalten ihre Entitäten und ihren Verlauf; die Geräte entfernter Messfelder werden gelöscht.",
+        "data": {
+          "study_plots": "Messfelder"
+        }
       }
     },
     "abort": {
       "already_configured": "Dieser Standort ist bereits konfiguriert.",
       "imis_unavailable": "Die IMIS-Stationsliste konnte nicht geladen werden. Bitte später erneut versuchen.",
+      "study_plot_unavailable": "Die Messfeld-Liste konnte nicht geladen werden. Bitte später erneut versuchen.",
       "unknown": "Unerwarteter Fehler. Details stehen im Home-Assistant-Protokoll.",
       "reconfigure_successful": "Der Eintrag wurde aktualisiert und die Integration neu geladen."
     },
@@ -63,11 +79,19 @@
         "data": {
           "imis_stations": "Stationen"
         }
+      },
+      "study_plot": {
+        "title": "Messfelder",
+        "description": "Verwalte die Messfeld-Favoriten dieses Eintrags. Die Liste ist nach Distanz sortiert und zeigt den Kanton, zum Suchen einfach tippen.",
+        "data": {
+          "study_plots": "Messfelder"
+        }
       }
     },
     "abort": {
       "no_options": "Dieser Eintrag hat keine Optionen: Standort oder Bezeichnung änderst du über „Neu konfigurieren“ im Menü des Eintrags.",
       "imis_unavailable": "Die IMIS-Stationsliste konnte nicht geladen werden. Bitte später erneut versuchen.",
+      "study_plot_unavailable": "Die Messfeld-Liste konnte nicht geladen werden. Bitte später erneut versuchen.",
       "unknown": "Unerwarteter Fehler. Details stehen im Home-Assistant-Protokoll."
     },
     "error": {
@@ -148,6 +172,10 @@
     "imis_station_unavailable": {
       "title": "SLF Lawinenbulletin: IMIS-Station {station} nicht erreichbar",
       "description": "Die Messwerte der IMIS-Station {station} ({code}) konnten sechs Stunden lang nicht abgerufen werden. Die Station ist möglicherweise ausser Betrieb oder aus dem Netz genommen. Ihre Sensoren bleiben nicht verfügbar. Ersetze sie über „Konfigurieren“ oder „Neu konfigurieren“ im Menü des Eintrags; dieser Hinweis verschwindet, sobald die Station wieder antwortet."
+    },
+    "study_plot_unavailable": {
+      "title": "SLF Lawinenbulletin: Messfeld {station} nicht erreichbar",
+      "description": "Die Ablesungen des Messfelds {station} ({code}) konnten zwölf Stunden lang nicht abgerufen werden. Das Messfeld wurde möglicherweise aufgehoben oder aus dem Netz genommen. Seine Sensoren bleiben nicht verfügbar. Ersetze es über „Konfigurieren“ oder „Neu konfigurieren“ im Menü des Eintrags; dieser Hinweis verschwindet, sobald das Messfeld wieder antwortet. Ein Tag ohne Ablesung wird hier nicht gemeldet: Die Sensoren zeigen dann „unbekannt“."
     }
   }
 }

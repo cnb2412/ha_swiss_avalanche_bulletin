@@ -5,11 +5,11 @@ rules:
     comment: The integration has no actions.
   appropriate-polling:
     status: done
-    comment: Bulletin and IMIS values hourly; the SLF publishes the bulletin twice a day, the stations report every 30 minutes.
+    comment: Bulletin and study plots hourly, IMIS every 30 minutes; the SLF publishes the bulletin twice a day, the IMIS stations report every 30 minutes, the study plots once a day.
   brands: done
   common-modules:
     status: done
-    comment: coordinator.py, imis.py, device.py, issues.py and localization.py hold the shared pieces.
+    comment: coordinator.py, imis.py, study_plot.py, device.py, issues.py and localization.py hold the shared pieces.
   config-flow: done
   config-flow-test-coverage: done
   dependency-transparency:
@@ -26,7 +26,7 @@ rules:
   has-entity-name: done
   runtime-data:
     status: done
-    comment: RuntimeData with the bulletin and IMIS coordinators is entry.runtime_data.
+    comment: RuntimeData with the bulletin, IMIS and study plot coordinators is entry.runtime_data.
   test-before-configure: done
   test-before-setup: done
   unique-config-entry: done

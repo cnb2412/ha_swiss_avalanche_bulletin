@@ -10,18 +10,33 @@ SECTOR_URL = "https://aws.slf.ch/api/warningregion/sector/findByLocWGS84"
 IMIS_STATIONS_URL = "https://measurement-api.slf.ch/public/api/imis/stations"
 IMIS_MEASUREMENTS_URL = "https://measurement-api.slf.ch/public/api/imis/station/{code}/measurements"
 IMIS_DAILY_SNOW_URL = "https://measurement-api.slf.ch/public/api/imis/daily-snow"
+STUDY_PLOT_STATIONS_URL = "https://measurement-api.slf.ch/public/api/study-plot/stations"
+STUDY_PLOT_MEASUREMENTS_URL = (
+    "https://measurement-api.slf.ch/public/api/study-plot/station/{code}/measurements"
+)
 
 UPDATE_INTERVAL_MINUTES = 60
 IMIS_UPDATE_INTERVAL_MINUTES = 30
+# Study plots are read by an observer once a day (06:00 UTC); hourly picks a
+# new reading up soon after it is entered without asking every half hour.
+STUDY_PLOT_UPDATE_INTERVAL_MINUTES = 60
 
 CONF_NAME = "name"
 CONF_LATITUDE = "latitude"
 CONF_LONGITUDE = "longitude"
 CONF_IMIS_STATIONS = "imis_stations"
+CONF_STUDY_PLOTS = "study_plots"
 CONF_MODE = "mode"
 
 MODE_BULLETIN = "bulletin"
 MODE_IMIS = "imis"
+MODE_STUDY_PLOT = "study_plot"
+
+# The station modes: the config key their favourites are stored under.
+STATIONS_KEY: dict[str, str] = {
+    MODE_IMIS: CONF_IMIS_STATIONS,
+    MODE_STUDY_PLOT: CONF_STUDY_PLOTS,
+}
 
 STATIC_URL_BASE = "/slf_avalanche/static"
 

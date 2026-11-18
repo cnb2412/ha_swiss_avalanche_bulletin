@@ -1,5 +1,5 @@
 """Pure helpers: bulletin feature lookup, worst danger rating, station
-distances and the merge of IMIS measurement records."""
+distances and the merge of IMIS and study plot measurement records."""
 from __future__ import annotations
 
 from datetime import timedelta
@@ -14,6 +14,7 @@ from custom_components.slf_avalanche.imis import (
     haversine_km,
     stations_by_distance,
 )
+from custom_components.slf_avalanche.study_plot import async_fetch_study_plot_measurements
 
 BULLETIN = {"features": [
     {"properties": {"regions": [{"regionID": "CH-1111"}, {"regionID": "CH-1112"}], "bulletinID": "a"}},
@@ -103,3 +104,30 @@ async def test_measurements_without_records():
     with patch("custom_components.slf_avalanche.imis.async_get_clientsession", return_value=_Session([])):
         result = await async_fetch_station_measurements(None, "WFJ2")
     assert result == {"values": {}, "dates": {}, "fields": set(), "measure_date": None}
+
+
+@pytest.mark.asyncio
+async def test_study_plot_reading_stays_current_until_the_next_one():
+    now = dt_util.utcnow().replace(microsecond=0)
+    two_days = (now - timedelta(hours=50)).isoformat()
+    yesterday = (now - timedelta(hours=26)).isoformat()
+    records = [
+        {"station_code": "5SE0", "measure_date": two_days, "HS": 40, "HN_1D": 5, "HNW_1D": 4.0},
+        {"station_code": "5SE0", "measure_date": yesterday, "HS": 42, "HN_1D": 2, "HNW_1D": None},
+    ]
+    with patch("custom_components.slf_avalanche.study_plot.async_get_clientsession", return_value=_Session(records)):
+        result = await async_fetch_study_plot_measurements(None, "5SE0")
+    assert result["values"] == {"snow_height": 42, "new_snow_1d": 2}  # yesterday morning is still current
+    assert result["dates"]["snow_height"] == yesterday
+    assert "new_snow_water_equivalent" not in result["values"]  # only read two days ago
+    assert result["fields"] == {"snow_height", "new_snow_1d", "new_snow_water_equivalent"}
+
+
+@pytest.mark.asyncio
+async def test_study_plot_without_a_recent_reading_reads_unknown():
+    old = (dt_util.utcnow() - timedelta(hours=40)).isoformat()
+    records = [{"station_code": "5SE0", "measure_date": old, "HS": 42, "HN_1D": 0, "HNW_1D": None}]
+    with patch("custom_components.slf_avalanche.study_plot.async_get_clientsession", return_value=_Session(records)):
+        result = await async_fetch_study_plot_measurements(None, "5SE0")
+    assert result["values"] == {}
+    assert result["fields"] == {"snow_height", "new_snow_1d"}

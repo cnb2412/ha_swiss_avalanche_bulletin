@@ -114,6 +114,42 @@ STRINGS: dict[str, dict[str, str]] = {
         "fr": "Direction du vent",
         "it": "Direzione del vento",
     },
+    "study_plot_entry_title": {
+        "de": "Messfeld",
+        "en": "Study plot",
+        "fr": "Champ de mesure",
+        "it": "Campo di misura",
+    },
+    "sp_device_name": {
+        "de": "SLF-Messfeld {name}",
+        "en": "SLF Study Plot {name}",
+        "fr": "Champ de mesure SLF {name}",
+        "it": "Campo di misura SLF {name}",
+    },
+    "sp_model": {
+        "de": "Manuelles Messfeld (Vergleichsstation)",
+        "en": "Manual Study Plot",
+        "fr": "Champ de mesure manuel",
+        "it": "Campo di misura manuale",
+    },
+    "sp_snow_height": {
+        "de": "Schneehöhe",
+        "en": "Snow Depth",
+        "fr": "Hauteur de neige",
+        "it": "Altezza della neve",
+    },
+    "sp_new_snow_1d": {
+        "de": "Neuschnee 24 h",
+        "en": "New Snow 24 h",
+        "fr": "Neige fraîche 24 h",
+        "it": "Neve fresca 24 h",
+    },
+    "sp_new_snow_water_equivalent": {
+        "de": "Wasserwert Neuschnee 24 h",
+        "en": "New Snow Water Equivalent 24 h",
+        "fr": "Équivalent en eau de la neige fraîche 24 h",
+        "it": "Equivalente in acqua della neve fresca 24 h",
+    },
 }
 
 # CAAML dangerRating mainValue -> localized EAWS danger-level text.

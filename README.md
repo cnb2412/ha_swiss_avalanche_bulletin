@@ -11,13 +11,14 @@
 
 ![Swiss Avalanche Bulletin](readme_header.png)
 
-A Home Assistant custom integration for the official Swiss **avalanche bulletin**, published by the **WSL Institute for Snow and Avalanche Research (SLF)** — and, independently of it, for the **IMIS measuring stations** of the SLF: snow depth, new snow, temperatures and wind from ~200 automatic high-alpine stations.
+A Home Assistant custom integration for the official Swiss **avalanche bulletin**, published by the **WSL Institute for Snow and Avalanche Research (SLF)** — and, independently of it, for the **IMIS measuring stations** of the SLF (snow depth, new snow, temperatures and wind from ~200 automatic high-alpine stations) and its **study plots** (snow depth and new snow read every morning at ~100 manual measuring fields).
 
 ## Highlights
 
 - **The danger level for your spot**: your coordinates are resolved to one of about 150 SLF warning regions; the sensors give the danger level 1–5, the region and up to three avalanche problems, refreshed every hour.
 - **Several locations**: home, a cabin, the area of the next tour — each is its own entry.
 - **IMIS measuring stations**: about 200 stations in the Alps and the Jura with snow depth, new snow in 24 hours, air and snow-surface temperature, humidity and wind, every 30 minutes from the official measurement API.
+- **Study plots**: about 100 manual measuring fields, many of them in valleys and villages, with the observer's daily snow depth, new snow and its water equivalent.
 - **A station card and a dashboard**: the bundled "SLF IMIS Station" card with a visual editor, and a dashboard strategy that lays out your locations and stations by itself.
 - **Built for the automation editor**: triggers (danger level reached, danger level changed), conditions (danger level at least / below) and a notification blueprint — no templates needed.
 - **No value rather than a stale one**: outside the season the bulletin sensors report nothing, and a station value counts as current only within 3 hours.
@@ -64,6 +65,22 @@ Their entity ids are built from the station code and the same four-character ent
 
 A value is only reported as current if it was measured within the last 3 hours; the `measure_date` attribute tells when the shown value was measured. The sensors of a station that cannot be fetched are `unavailable` until it answers again, and a station that is unreachable when Home Assistant starts gets its sensors as soon as it does — no reload needed.
 
+## Study plots
+
+Study plots ("Vergleichsstationen") are the SLF's manual measuring fields: about 100 sites, many of them in valleys and villages below the IMIS stations, where an observer reads the snow every morning. When adding the integration, choose **"Study plots"** to pick any of them as favourites — the searchable list is sorted by distance from your home location and shows the canton; the favourites can be changed at any time via the integration options.
+
+Each study plot becomes a device with sensors for what it reports, from the same official measurement API:
+
+| Sensor | |
+|---|---|
+| Snow depth (cm) | every study plot |
+| New snow last 24 h (cm) | every study plot |
+| Water equivalent of the new snow (mm) | study plots that measure it |
+
+Their entity ids follow the IMIS scheme, `sensor.slf_studyplot_<code>_<xxxx>_<measurement>` — e.g. `sensor.slf_studyplot_5wj0_ab12_snow_height`.
+
+The reading is taken once a day (06:00 UTC) and checked for every hour. It counts as current for 36 hours, so the morning's value stays until the observer has entered the next one; after a day without a reading the sensors read unknown, and `measure_date` tells when the shown value was read. A study plot that cannot be fetched at all is `unavailable`, and after twelve hours a repair notice says so.
+
 ## Bundled card & dashboard
 
 The integration ships a Lovelace card, **SLF IMIS Station** (`custom:slf-imis-station-card`), with a visual editor — snow depth as the hero value, temperatures, wind with direction arrow, measurement age and the required SLF attribution — and, in the same file, a **dashboard strategy** that assembles a complete avalanche dashboard from your config entries at display time.
@@ -78,10 +95,10 @@ The card file is served by the integration, but you register it as a Lovelace re
 
 | Field | Value |
 |---|---|
-| URL | `/slf_avalanche/static/slf-imis-card.js?v=1.3.0` |
+| URL | `/slf_avalanche/static/slf-imis-card.js?v=1.7.0` |
 | Resource type | JavaScript module |
 
-Then reload the page (Ctrl/Cmd+Shift+R). The card appears as **SLF IMIS Station** in the normal card picker, with its visual editor; the same file also contains the [dashboard strategy](#dashboard), so this one resource covers both.
+Then reload the page (Ctrl/Cmd+Shift+R). The card appears as **SLF IMIS Station** in the normal card picker, with its visual editor — its station picker lists your IMIS stations and study plots alike; the same file also contains the [dashboard strategy](#dashboard), so this one resource covers both.
 
 > **After updating the integration:** the card file is served with long-lived cache headers, so your browser may keep the old copy. The `?v=` part of the URL is only there to defeat that cache — if a new feature does not show up after an update, raise it to the new version (or do a hard reload, Ctrl+F5 / Cmd+Shift+R).
 
@@ -153,6 +170,13 @@ Add the cards wherever you like. An IMIS station card takes the station part of 
 ```yaml
 type: custom:slf-imis-station-card
 station: slf2_ab12
+```
+
+For a study plot, put `studyplot/` in front of the station part:
+
+```yaml
+type: custom:slf-imis-station-card
+station: studyplot/5wj0_ab12
 ```
 
 For a bulletin location, plain tile cards on the two sensors work well:
@@ -234,11 +258,11 @@ The integration is listed in the Marketplace default catalog (formerly the HACS 
 
 1. Go to **Settings → Devices & Services → Add Integration**.
 2. Search for **"Swiss Avalanche Bulletin (SLF)"**.
-3. Choose what to set up: **avalanche bulletin for a location** or **IMIS measuring stations**.
-4. Bulletin: latitude/longitude default to your Home Assistant home location — adjust if you want a different location (e.g. a specific mountain area), and optionally give it a label. Stations: pick any stations from the searchable list.
+3. Choose what to set up: **avalanche bulletin for a location**, **IMIS measuring stations** or **study plots**.
+4. Bulletin: latitude/longitude default to your Home Assistant home location — adjust if you want a different location (e.g. a specific mountain area), and optionally give it a label. Stations and study plots: pick any of them from the searchable list.
 5. Done. Add the integration again for additional locations or station sets.
 
-**Changing an entry later.** Open the entry's menu (⋮) under **Settings → Devices & Services → Swiss Avalanche Bulletin (SLF)** and choose **Reconfigure**: a bulletin entry takes a new location or label, an IMIS entry another set of stations (the **Configure** dialog of an IMIS entry does the same). Entities keep their ids and history; devices of removed stations are deleted.
+**Changing an entry later.** Open the entry's menu (⋮) under **Settings → Devices & Services → Swiss Avalanche Bulletin (SLF)** and choose **Reconfigure**: a bulletin entry takes a new location or label, an IMIS or study plot entry another set of stations (its **Configure** dialog does the same). Entities keep their ids and history; devices of removed stations are deleted.
 
 ## Data source & license
 
@@ -256,7 +280,7 @@ The integration declares **Bronze** on the [Home Assistant integration quality s
 
 ## Notes
 
-- **Repairs.** When the SLF service has not answered for several refreshes in a row, when the SLF knows no warning region for a location, or when an IMIS station could not be fetched for six hours, a notice appears under **Settings → Repairs** that says what happened and what to do; it disappears on its own once the data is back.
+- **Repairs.** When the SLF service has not answered for several refreshes in a row, when the SLF knows no warning region for a location, when an IMIS station could not be fetched for six hours, or a study plot for twelve hours, a notice appears under **Settings → Repairs** that says what happened and what to do; it disappears on its own once the data is back.
 - Only relevant for locations in or near Switzerland — the SLF's ~150 warning regions cover the country and adjacent border areas.
 - This integration is unofficial and not affiliated with, endorsed by, or supported by the SLF. It only reads their published open data.
 - If the SLF API is unreachable or its format changes, entities become `unavailable` rather than reporting a stale or incorrect value. The sensors of a single IMIS station that cannot be fetched become `unavailable` on their own while the other stations keep updating.

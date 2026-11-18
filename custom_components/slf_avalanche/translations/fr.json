@@ -3,10 +3,11 @@
     "step": {
       "user": {
         "title": "Bulletin d'avalanches Suisse (SLF)",
-        "description": "Choisissez ce qu'il faut configurer : le bulletin d'avalanches pour un emplacement, ou des stations de mesure IMIS favorites (hauteur de neige, températures, vent) — indépendants l'un de l'autre. Ajoutez à nouveau l'intégration pour d'autres emplacements ou stations.",
+        "description": "Choisissez ce qu'il faut configurer : le bulletin d'avalanches pour un emplacement, des stations de mesure IMIS favorites (hauteur de neige, températures, vent) ou des champs de mesure favoris (hauteur de neige et neige fraîche relevées par un observateur) — indépendants les uns des autres. Ajoutez à nouveau l'intégration pour d'autres emplacements ou stations.",
         "menu_options": {
           "bulletin": "Bulletin d'avalanches pour un emplacement",
-          "imis": "Stations de mesure IMIS (favorites)"
+          "imis": "Stations de mesure IMIS (favorites)",
+          "study_plot": "Champs de mesure (stations d'observation manuelles, favoris)"
         }
       },
       "bulletin": {
@@ -25,6 +26,13 @@
           "imis_stations": "Stations"
         }
       },
+      "study_plot": {
+        "title": "Champs de mesure",
+        "description": "Sélectionnez vos champs de mesure favoris du SLF : des stations d'observation manuelles où un observateur relève chaque matin la hauteur de neige, la neige fraîche et son équivalent en eau. N'importe quel champ de mesure peut être sélectionné — la liste est triée par distance depuis votre domicile et indique le canton, tapez pour rechercher. Les favoris peuvent être modifiés plus tard via les options de l'intégration.",
+        "data": {
+          "study_plots": "Champs de mesure"
+        }
+      },
       "reconfigure_bulletin": {
         "title": "Modifier l'emplacement ou le libellé",
         "description": "Modifie l'emplacement ou le libellé de cette entrée de bulletin. La région d'alerte est déterminée à nouveau pour les nouvelles coordonnées. Les entités conservent leurs identifiants et leur historique ; le nom de l'appareil suit le libellé.",
@@ -40,11 +48,19 @@
         "data": {
           "imis_stations": "Stations"
         }
+      },
+      "reconfigure_study_plot": {
+        "title": "Changer de champs de mesure",
+        "description": "Modifie les champs de mesure favoris de cette entrée. La liste est triée par distance et indique le canton, tapez pour rechercher. Les champs qui restent sélectionnés conservent leurs entités et leur historique ; les appareils des champs retirés sont supprimés.",
+        "data": {
+          "study_plots": "Champs de mesure"
+        }
       }
     },
     "abort": {
       "already_configured": "Cet emplacement est déjà configuré.",
       "imis_unavailable": "Impossible de récupérer la liste des stations IMIS. Veuillez réessayer plus tard.",
+      "study_plot_unavailable": "Impossible de récupérer la liste des champs de mesure. Veuillez réessayer plus tard.",
       "unknown": "Erreur inattendue. Les détails se trouvent dans le journal de Home Assistant.",
       "reconfigure_successful": "L'entrée a été mise à jour et l'intégration rechargée."
     },
@@ -63,11 +79,19 @@
         "data": {
           "imis_stations": "Stations"
         }
+      },
+      "study_plot": {
+        "title": "Champs de mesure",
+        "description": "Gérez les champs de mesure favoris de cette entrée. La liste est triée par distance et indique le canton, tapez pour rechercher.",
+        "data": {
+          "study_plots": "Champs de mesure"
+        }
       }
     },
     "abort": {
       "no_options": "Cette entrée n'a pas d'options : utilise « Reconfigurer » dans le menu de l'entrée pour changer son emplacement ou son libellé.",
       "imis_unavailable": "Impossible de récupérer la liste des stations IMIS. Veuillez réessayer plus tard.",
+      "study_plot_unavailable": "Impossible de récupérer la liste des champs de mesure. Veuillez réessayer plus tard.",
       "unknown": "Erreur inattendue. Les détails se trouvent dans le journal de Home Assistant."
     },
     "error": {
@@ -148,6 +172,10 @@
     "imis_station_unavailable": {
       "title": "Bulletin d'avalanches SLF : station IMIS {station} injoignable",
       "description": "Les mesures de la station IMIS {station} ({code}) n'ont pas pu être récupérées pendant six heures. La station est peut-être hors service ou retirée du réseau. Ses capteurs restent indisponibles. Remplace-la via « Configurer » ou « Reconfigurer » dans le menu de l'entrée ; cet avis disparaît dès que la station répond de nouveau."
+    },
+    "study_plot_unavailable": {
+      "title": "Bulletin d'avalanches SLF : champ de mesure {station} injoignable",
+      "description": "Les relevés du champ de mesure {station} ({code}) n'ont pas pu être récupérés pendant douze heures. Le champ a peut-être été fermé ou retiré du réseau. Ses capteurs restent indisponibles. Remplacez-le via « Configurer » ou « Reconfigurer » dans le menu de l'entrée ; cet avis disparaît dès que le champ répond de nouveau. Un jour sans relevé n'est pas signalé ici : les capteurs indiquent alors « inconnu »."
     }
   }
 }

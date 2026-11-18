@@ -78,19 +78,26 @@ def _measured_at(record: dict) -> datetime | None:
 async def async_fetch_station_measurements(hass: HomeAssistant, code: str) -> dict:
     """Current measurement values of one station plus its available fields.
 
-    The API returns the last 24 h in 30-minute steps, oldest first. The newest
-    record can contain isolated nulls (sensor hiccup), so the newest non-null
-    value per field measured within the last IMIS_CURRENT_MAX_AGE is used,
-    together with the timestamp of the record it was taken from ("dates").
-    Which fields a station measures at all ("fields", used to decide which
-    sensors it gets) is judged across the whole 24 h window, so a field that
-    has gone quiet keeps its sensor and reads unknown.
+    The API returns the last 24 h in 30-minute steps, oldest first; see
+    merge_records for how they become the current values.
     """
     session = async_get_clientsession(hass)
     async with session.get(IMIS_MEASUREMENTS_URL.format(code=code), timeout=25) as resp:
         resp.raise_for_status()
         records = await resp.json(content_type=None)
+    return merge_records(records, FIELD_MAP, IMIS_CURRENT_MAX_AGE)
 
+
+def merge_records(records: object, field_map: dict[str, str], max_age: timedelta) -> dict:
+    """Current values per field from a station's records, oldest first.
+
+    The newest record can contain isolated nulls (sensor hiccup, a reading
+    not entered), so the newest non-null value per field measured within
+    max_age is used, together with the timestamp of the record it was taken
+    from ("dates"). Which fields a station measures at all ("fields", used to
+    decide which sensors it gets) is judged across all records, so a field
+    that has gone quiet keeps its sensor and reads unknown.
+    """
     if not isinstance(records, list):
         records = []
     records = [r for r in records if isinstance(r, dict)]
@@ -100,11 +107,11 @@ async def async_fetch_station_measurements(hass: HomeAssistant, code: str) -> di
     values: dict[str, float] = {}
     dates: dict[str, str | None] = {}
     fields: set[str] = set()
-    cutoff = dt_util.utcnow() - IMIS_CURRENT_MAX_AGE
+    cutoff = dt_util.utcnow() - max_age
     for record in records:  # oldest -> newest; later records win
         measured = _measured_at(record)
         current = measured is not None and measured >= cutoff
-        for api_key, key in FIELD_MAP.items():
+        for api_key, key in field_map.items():
             value = record.get(api_key)
             if value is None:
                 continue

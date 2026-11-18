@@ -2,7 +2,8 @@
  * integration and served under /slf_avalanche/static/. Register it once
  * as a Lovelace resource (JavaScript module); see the README.
  *
- *   slf-imis-station-card   snow, temperature and wind of one IMIS station
+ *   slf-imis-station-card   snow, temperature and wind of one IMIS station,
+ *                           or snow depth and new snow of one study plot
  *
  * The card provides a visual editor (getConfigElement) and follows the
  * Home Assistant frontend language (de/en/fr/it).
@@ -17,24 +18,28 @@ const SLF_IMIS_L10N = {
     snow_height: 'Schneehöhe', new_snow: 'Neuschnee 24 h', air: 'Luft',
     surface: 'Schneeoberfläche', humidity: 'Luftfeuchtigkeit', wind: 'Wind',
     gusts: 'Böen', measured: 'Gemessen', station: 'Station', no_data: 'Keine Daten',
+    water_equivalent: 'Wasserwert', study_plot: 'Messfeld',
     attribution: 'Daten: WSL-Institut für Schnee- und Lawinenforschung SLF',
   },
   en: {
     snow_height: 'Snow depth', new_snow: 'New snow 24 h', air: 'Air',
     surface: 'Snow surface', humidity: 'Humidity', wind: 'Wind',
     gusts: 'Gusts', measured: 'Measured', station: 'Station', no_data: 'No data',
+    water_equivalent: 'Water equivalent', study_plot: 'Study plot',
     attribution: 'Data: WSL Institute for Snow and Avalanche Research SLF',
   },
   fr: {
     snow_height: 'Hauteur de neige', new_snow: 'Neige fraîche 24 h', air: 'Air',
     surface: 'Surface de la neige', humidity: 'Humidité', wind: 'Vent',
     gusts: 'Rafales', measured: 'Mesuré', station: 'Station', no_data: 'Pas de données',
+    water_equivalent: 'Équivalent en eau', study_plot: 'Champ de mesure',
     attribution: "Données : Institut pour l'étude de la neige et des avalanches SLF",
   },
   it: {
     snow_height: 'Altezza della neve', new_snow: 'Neve fresca 24 h', air: 'Aria',
     surface: 'Superficie della neve', humidity: 'Umidità', wind: 'Vento',
     gusts: 'Raffiche', measured: 'Misurato', station: 'Stazione', no_data: 'Nessun dato',
+    water_equivalent: 'Equivalente in acqua', study_plot: 'Campo di misura',
     attribution: 'Dati: Istituto per lo studio della neve e delle valanghe SLF',
   },
 };
@@ -50,25 +55,52 @@ function slfImisEsc(value) {
   }[c]));
 }
 
-/* Station slugs present in the state machine: sensor.slf_imis_<slug>_<key>.
- * The slug is the lower-case station code, followed since 1.3.0 by the
- * last four characters of the config entry id (e.g. slf2_ab12). */
+/* Stations present in the state machine. An IMIS station's sensors are
+ * sensor.slf_imis_<slug>_<key>, a study plot's (since 1.7.0)
+ * sensor.slf_studyplot_<slug>_<key>. The slug is the lower-case station
+ * code, followed since 1.3.0 by the last four characters of the config
+ * entry id (e.g. slf2_ab12). The card's `station` is the bare slug for an
+ * IMIS station, as it always was, and `studyplot/<slug>` for a study plot. */
+const SLF_STUDY_PLOT_PREFIX = 'studyplot/';
+const SLF_IMIS_ENTITY = /^sensor\.slf_imis_(.+)_(snow_height|air_temperature|wind_speed|wind_direction|humidity)$/;
+const SLF_STUDY_PLOT_ENTITY = /^sensor\.slf_studyplot_(.+)_(snow_height|new_snow_1d|new_snow_water_equivalent)$/;
+
+/* The card's station value for a sensor entity id, or null. */
+function slfStationOf(entityId) {
+  let m = SLF_IMIS_ENTITY.exec(entityId);
+  if (m) return m[1];
+  m = SLF_STUDY_PLOT_ENTITY.exec(entityId);
+  return m ? SLF_STUDY_PLOT_PREFIX + m[1] : null;
+}
+
+function slfStationEntity(station, key) {
+  return station.startsWith(SLF_STUDY_PLOT_PREFIX)
+    ? `sensor.slf_studyplot_${station.slice(SLF_STUDY_PLOT_PREFIX.length)}_${key}`
+    : `sensor.slf_imis_${station}_${key}`;
+}
+
+function slfStationFallbackName(station) {
+  return (station.startsWith(SLF_STUDY_PLOT_PREFIX)
+    ? station.slice(SLF_STUDY_PLOT_PREFIX.length) : station).toUpperCase();
+}
+
 function slfImisStations(hass) {
   const found = new Map();
   if (!hass) return [];
   for (const id of Object.keys(hass.states)) {
-    const m = id.match(/^sensor\.slf_imis_(.+)_(snow_height|air_temperature|wind_speed|wind_direction|humidity)$/);
-    if (!m) continue;
-    if (!found.has(m[1])) {
+    const station = slfStationOf(id);
+    if (!station) continue;
+    if (!found.has(station)) {
       const attrs = hass.states[id].attributes || {};
-      found.set(m[1], attrs.station_name ? `${attrs.station_name} (${attrs.station_code})` : m[1].toUpperCase());
+      found.set(station, attrs.station_name
+        ? `${attrs.station_name} (${attrs.station_code})` : slfStationFallbackName(station));
     }
   }
   return [...found.entries()].map(([value, label]) => ({ value, label }));
 }
 
 function slfImisState(hass, station, key) {
-  const st = hass.states[`sensor.slf_imis_${station}_${key}`];
+  const st = hass.states[slfStationEntity(station, key)];
   if (!st || st.state === 'unknown' || st.state === 'unavailable') return null;
   const value = Number(st.state);
   return Number.isFinite(value) ? { value, attrs: st.attributes || {} } : null;
@@ -164,11 +196,12 @@ class SlfImisStationCard extends HTMLElement {
     const vw = slfImisState(hass, station, 'wind_speed');
     const vg = slfImisState(hass, station, 'wind_gust');
     const dw = slfImisState(hass, station, 'wind_direction');
+    const hnw = slfImisState(hass, station, 'new_snow_water_equivalent');
 
-    const any = hs || ta || vw;
+    const any = hs || hn || ta || vw;
     const attrs = (any || { attrs: {} }).attrs;
     const title = this._config.title
-      || (attrs.station_name ? `${attrs.station_name} (${attrs.station_code})` : station.toUpperCase());
+      || (attrs.station_name ? `${attrs.station_name} (${attrs.station_code})` : slfStationFallbackName(station));
     this._el.name.textContent = title;
     const meta = [];
     if (attrs.elevation != null) meta.push(`${Math.round(attrs.elevation)} m`);
@@ -181,6 +214,7 @@ class SlfImisStationCard extends HTMLElement {
         <div><span class="value">${Math.round(hs.value)}</span> <span class="unit">cm</span></div>
         <div class="label">${L.snow_height}</div></div></div>`;
       if (hn && hn.value > 0) html += `<span class="chip">🌨 ${L.new_snow}: ${Math.round(hn.value)} cm</span>`;
+      if (hnw && hnw.value > 0) html += `<span class="chip">💧 ${L.water_equivalent}: ${hnw.value.toFixed(1)} mm</span>`;
     }
     const rows = [];
     if (ta) rows.push([L.air, `${ta.value.toFixed(1)} °C`]);
@@ -214,7 +248,7 @@ class SlfImisStationCardEditor extends HTMLElement {
     if (!this._form) {
       this._form = document.createElement('ha-form');
       this._form.computeLabel = (s) => ({
-        station: 'IMIS station', title: 'Card title (optional)',
+        station: 'Station', title: 'Card title (optional)',
       }[s.name] || s.name);
       this._form.addEventListener('value-changed', (ev) => {
         this._config = { ...this._config, ...ev.detail.value };
@@ -244,7 +278,7 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: 'slf-imis-station-card',
   name: 'SLF IMIS Station',
-  description: 'Snow depth, temperatures and wind of an SLF IMIS measuring station',
+  description: 'Snow depth, temperatures and wind of an SLF IMIS measuring station, or snow depth and new snow of a study plot',
 });
 
 /* ===================================================================== */
@@ -587,6 +621,7 @@ const SAB_STRINGS = {
   en: {
     view: "Avalanches",
     imis_stations: "IMIS measuring stations",
+    study_plots: "Study plots",
     nothing_to_show:
       "### Nothing to show\n\nEvery entity of this integration is hidden. Unhide at least one under **Settings → Devices & services → Entities**.",
     not_configured:
@@ -595,6 +630,7 @@ const SAB_STRINGS = {
   de: {
     view: "Lawinen",
     imis_stations: "IMIS-Messstationen",
+    study_plots: "Messfelder",
     nothing_to_show:
       "### Nichts anzuzeigen\n\nAlle Entitäten dieser Integration sind ausgeblendet. Blende unter **Einstellungen → Geräte & Dienste → Entitäten** mindestens eine wieder ein.",
     not_configured:
@@ -603,6 +639,7 @@ const SAB_STRINGS = {
   fr: {
     view: "Avalanches",
     imis_stations: "Stations de mesure IMIS",
+    study_plots: "Champs de mesure",
     nothing_to_show:
       "### Rien à afficher\n\nToutes les entités de cette intégration sont masquées. Réaffichez-en au moins une sous **Paramètres → Appareils et services → Entités**.",
     not_configured:
@@ -611,6 +648,7 @@ const SAB_STRINGS = {
   it: {
     view: "Valanghe",
     imis_stations: "Stazioni di misura IMIS",
+    study_plots: "Campi di misura",
     nothing_to_show:
       "### Niente da mostrare\n\nTutte le entità di questa integrazione sono nascoste. Rendine visibile almeno una in **Impostazioni → Dispositivi e servizi → Entità**.",
     not_configured:
@@ -618,28 +656,33 @@ const SAB_STRINGS = {
   },
 };
 
-/* The bundled station card is configured with a station slug, not with an
- * entity: it reads sensor.slf_imis_<slug>_<key> straight from the state
- * machine. Its picker derives the slugs with this very pattern, so the
- * strategy applies the same one to the station device's registry entries
- * — whatever the card will look up is what the strategy hands it. */
-const SAB_STATION_ID =
-  /^sensor\.slf_imis_(.+)_(snow_height|air_temperature|wind_speed|wind_direction|humidity)$/;
-
+/* The bundled station card is configured with a station value, not with
+ * an entity: it reads sensor.slf_imis_<slug>_<key> (or, for a study plot,
+ * sensor.slf_studyplot_<slug>_<key>) straight from the state machine. Its
+ * picker derives the values with slfStationOf, so the strategy applies the
+ * same function to the station device's registry entries — whatever the
+ * card will look up is what the strategy hands it. */
 const SAB_stationSlug = (registryEntries) => {
   for (const e of registryEntries) {
-    const m = SAB_STATION_ID.exec(e.entity_id);
-    if (m) return m[1];
+    const station = slfStationOf(e.entity_id);
+    if (station) return station;
   }
   return null;
 };
+
+// Station kinds by the unique_id scheme `<entry>_<kind>_<code>_<key>`,
+// with the heading of their section.
+const SAB_STATION_KINDS = [
+  { kind: "imis", heading: "imis_stations", icon: "mdi:ruler" },
+  { kind: "sp", heading: "study_plots", icon: "mdi:clipboard-text-outline" },
+];
 
 defineDashboardStrategy("swiss-avalanche-bulletin", {
   domain: "slf_avalanche",
   title: "Swiss Avalanche Bulletin",
   icon: "mdi:snowflake-alert",
   description:
-    "Danger level, warning region and avalanche problems per location, plus a card per IMIS station favourite — generated live from the integration.",
+    "Danger level, warning region and avalanche problems per location, plus a card per IMIS station and study plot favourite — generated live from the integration.",
   strings: SAB_STRINGS,
 
   async build({ config, t, entities, devices, helpers }) {
@@ -654,7 +697,8 @@ defineDashboardStrategy("swiss-avalanche-bulletin", {
     // Two kinds of device, told apart by the unique_id scheme of the sensor
     // platform: a bulletin entry owns one device whose entities are
     // `<entry>_danger_level`, `<entry>_region` and `<entry>_problem_N`; an
-    // IMIS entry owns one device per station, `<entry>_imis_<code>_<key>`.
+    // IMIS or study plot entry owns one device per station,
+    // `<entry>_imis_<code>_<key>` or `<entry>_sp_<code>_<key>`.
     // groupByDevice already sorts by device name, which keeps the layout
     // stable between reloads.
     const bulletinSections = [];
@@ -664,12 +708,14 @@ defineDashboardStrategy("swiss-avalanche-bulletin", {
       const entryId = group.entities.find((e) => e.config_entry_id)?.config_entry_id;
       if (!entryId) continue;
 
-      const isStation = group.entities.some(
-        (e) => typeof e.unique_id === "string" && e.unique_id.startsWith(`${entryId}_imis_`)
+      const stationKind = SAB_STATION_KINDS.find(({ kind }) =>
+        group.entities.some(
+          (e) => typeof e.unique_id === "string" && e.unique_id.startsWith(`${entryId}_${kind}_`)
+        )
       );
-      if (isStation) {
-        if (!stationsByEntry.has(entryId)) stationsByEntry.set(entryId, []);
-        stationsByEntry.get(entryId).push(group);
+      if (stationKind) {
+        if (!stationsByEntry.has(entryId)) stationsByEntry.set(entryId, { kind: stationKind, groups: [] });
+        stationsByEntry.get(entryId).groups.push(group);
         continue;
       }
 
@@ -699,12 +745,12 @@ defineDashboardStrategy("swiss-avalanche-bulletin", {
       if (cards.length > 1) bulletinSections.push(grid(cards, columns));
     }
 
-    // --- IMIS stations: one section per entry, one card per station ------
+    // --- Stations: one section per entry, one card per station ----------
     // Full-width section with half-width cards, so two stations sit side by
     // side — the same layout the earlier auto-created dashboard used.
     const imisSections = [];
-    for (const groups of stationsByEntry.values()) {
-      const cards = [heading(t("imis_stations"), "mdi:ruler")];
+    for (const { kind, groups } of stationsByEntry.values()) {
+      const cards = [heading(t(kind.heading), kind.icon)];
       for (const group of groups) {
         // A station whose sensors the user hid entirely stays off the
         // dashboard, like a hidden bulletin entity does above.

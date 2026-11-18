@@ -3,10 +3,11 @@
     "step": {
       "user": {
         "title": "Bollettino valanghe Svizzera (SLF)",
-        "description": "Scegli cosa configurare: il bollettino valanghe per una posizione oppure stazioni di misura IMIS preferite (altezza della neve, temperature, vento) — indipendenti l'uno dall'altro. Aggiungi di nuovo l'integrazione per altre posizioni o stazioni.",
+        "description": "Scegli cosa configurare: il bollettino valanghe per una posizione, stazioni di misura IMIS preferite (altezza della neve, temperature, vento) oppure campi di misura preferiti (altezza della neve e neve fresca rilevate da un osservatore) — indipendenti l'uno dall'altro. Aggiungi di nuovo l'integrazione per altre posizioni o stazioni.",
         "menu_options": {
           "bulletin": "Bollettino valanghe per una posizione",
-          "imis": "Stazioni di misura IMIS (preferite)"
+          "imis": "Stazioni di misura IMIS (preferite)",
+          "study_plot": "Campi di misura (stazioni di osservazione manuali, preferiti)"
         }
       },
       "bulletin": {
@@ -25,6 +26,13 @@
           "imis_stations": "Stazioni"
         }
       },
+      "study_plot": {
+        "title": "Campi di misura",
+        "description": "Seleziona i tuoi campi di misura preferiti dell'SLF: stazioni di osservazione manuali dove un osservatore rileva ogni mattina l'altezza della neve, la neve fresca e il suo equivalente in acqua. È possibile selezionare qualsiasi campo — l'elenco è ordinato per distanza dalla posizione di casa e indica il cantone, digita per cercare. I preferiti possono essere modificati in seguito tramite le opzioni dell'integrazione.",
+        "data": {
+          "study_plots": "Campi di misura"
+        }
+      },
       "reconfigure_bulletin": {
         "title": "Modificare posizione o etichetta",
         "description": "Modifica la posizione o l'etichetta di questa voce del bollettino. La regione di allerta viene determinata di nuovo per le nuove coordinate. Le entità mantengono i loro ID e la cronologia; il nome del dispositivo segue l'etichetta.",
@@ -40,11 +48,19 @@
         "data": {
           "imis_stations": "Stazioni"
         }
+      },
+      "reconfigure_study_plot": {
+        "title": "Cambiare campi di misura",
+        "description": "Modifica i campi di misura preferiti di questa voce. L'elenco è ordinato per distanza e indica il cantone, digita per cercare. I campi che restano selezionati mantengono entità e cronologia; i dispositivi dei campi rimossi vengono eliminati.",
+        "data": {
+          "study_plots": "Campi di misura"
+        }
       }
     },
     "abort": {
       "already_configured": "Questa posizione è già configurata.",
       "imis_unavailable": "Impossibile recuperare l'elenco delle stazioni IMIS. Riprova più tardi.",
+      "study_plot_unavailable": "Impossibile recuperare l'elenco dei campi di misura. Riprova più tardi.",
       "unknown": "Errore imprevisto. I dettagli sono nel registro di Home Assistant.",
       "reconfigure_successful": "La voce è stata aggiornata e l'integrazione ricaricata."
     },
@@ -63,11 +79,19 @@
         "data": {
           "imis_stations": "Stazioni"
         }
+      },
+      "study_plot": {
+        "title": "Campi di misura",
+        "description": "Gestisci i campi di misura preferiti di questa voce. L'elenco è ordinato per distanza e indica il cantone, digita per cercare.",
+        "data": {
+          "study_plots": "Campi di misura"
+        }
       }
     },
     "abort": {
       "no_options": "Questa voce non ha opzioni: usa «Riconfigura» nel menu della voce per cambiarne posizione o etichetta.",
       "imis_unavailable": "Impossibile recuperare l'elenco delle stazioni IMIS. Riprova più tardi.",
+      "study_plot_unavailable": "Impossibile recuperare l'elenco dei campi di misura. Riprova più tardi.",
       "unknown": "Errore imprevisto. I dettagli sono nel registro di Home Assistant."
     },
     "error": {
@@ -148,6 +172,10 @@
     "imis_station_unavailable": {
       "title": "Bollettino valanghe SLF: stazione IMIS {station} non raggiungibile",
       "description": "Le misure della stazione IMIS {station} ({code}) non hanno potuto essere recuperate per sei ore. La stazione potrebbe essere fuori servizio o rimossa dalla rete. I suoi sensori restano non disponibili. Sostituiscila con «Configura» o «Riconfigura» nel menu della voce; questo avviso scompare appena la stazione risponde di nuovo."
+    },
+    "study_plot_unavailable": {
+      "title": "Bollettino valanghe SLF: campo di misura {station} non raggiungibile",
+      "description": "I rilevamenti del campo di misura {station} ({code}) non hanno potuto essere recuperati per dodici ore. Il campo potrebbe essere stato chiuso o rimosso dalla rete. I suoi sensori restano non disponibili. Sostituiscilo con «Configura» o «Riconfigura» nel menu della voce; questo avviso scompare appena il campo risponde di nuovo. Un giorno senza rilevamento non viene segnalato qui: i sensori indicano allora «sconosciuto»."
     }
   }
 }
